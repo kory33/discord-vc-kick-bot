@@ -1,6 +1,5 @@
 package com.github.kory33.tools.discord.vckickbot
 
-import akka.NotUsed
 import cats.Monad
 import com.github.kory33.tools.discord.util.RichFuture._
 import com.github.kory33.tools.discord.util.RichRequestDSL._
