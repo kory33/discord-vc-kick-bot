@@ -34,14 +34,13 @@ class VCKickUsersHandler[F[_]: Monad] extends (ParsedCmd[F, List[String]] => Uni
 
       memberCollectionActions = for {
         member <- guild.members.values.toList if targetUserIds.contains(member.userId)
-      } yield {
-        val modificationTargetData = ModifyGuildMemberData(channelId = RestSome(intermediaryVC.id))
-        val request = ModifyGuildMember(guild.id, member.userId, modificationTargetData)
-        wrap(request)
-      }
+        modificationTargetData = ModifyGuildMemberData(channelId = RestSome(intermediaryVC.id))
+        request = ModifyGuildMember(guild.id, member.userId, modificationTargetData)
+      } yield wrap(request)
 
-      _ <- catsStdInstancesForList.sequence(memberCollectionActions)
-      _ <- DeleteCloseChannel(intermediaryVC.id)
+      _ <- catsStdInstancesForList
+        .sequence(memberCollectionActions)
+        .flatMap(_ => DeleteCloseChannel(intermediaryVC.id))
     } yield ()
   }
 
