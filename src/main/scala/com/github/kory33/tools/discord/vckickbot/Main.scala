@@ -1,10 +1,12 @@
 package com.github.kory33.tools.discord.vckickbot
 
+import akka.NotUsed
 import cats.Monad
 import com.github.kory33.tools.discord.util.RichFuture._
+import com.github.kory33.tools.discord.util.RichRequestDSL._
 import net.katsstuff.ackcord._
 import net.katsstuff.ackcord.commands.{CmdCategory, CmdDescription, CmdFilter, ParsedCmd}
-import net.katsstuff.ackcord.data.ChannelType
+import net.katsstuff.ackcord.data.{ChannelType, GuildMember}
 import net.katsstuff.ackcord.http.rest._
 import net.katsstuff.ackcord.util.Streamable
 
@@ -32,15 +34,18 @@ class VCKickUsersHandler[F[_]: Monad] extends (ParsedCmd[F, List[String]] => Uni
     } yield for {
       intermediaryVC <- CreateGuildChannel(guild.id, Constants.intermediaryVCData)
 
+      moveMember = { member: GuildMember =>
+        val modificationTargetData = ModifyGuildMemberData(channelId = RestSome(intermediaryVC.id))
+        ModifyGuildMember(guild.id, member.userId, modificationTargetData)
+      }
+
       memberCollectionActions = for {
         member <- guild.members.values.toList if targetUserIds.contains(member.userId)
-        modificationTargetData = ModifyGuildMemberData(channelId = RestSome(intermediaryVC.id))
-        request = ModifyGuildMember(guild.id, member.userId, modificationTargetData)
-      } yield wrap(request)
+      } yield wrap(moveMember(member))
 
       _ <- catsStdInstancesForList
         .sequence(memberCollectionActions)
-        .flatMap(_ => DeleteCloseChannel(intermediaryVC.id))
+        .andThen(DeleteCloseChannel(intermediaryVC.id))
     } yield ()
   }
 
