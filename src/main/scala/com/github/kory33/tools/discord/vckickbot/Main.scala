@@ -35,12 +35,12 @@ class VCKickUsersHandler[F[_]: Monad] extends (ParsedCmd[F, List[String]] => Uni
 
       moveMember = { member: GuildMember =>
         val modificationTargetData = ModifyGuildMemberData(channelId = RestSome(intermediaryVC.id))
-        ModifyGuildMember(guild.id, member.userId, modificationTargetData)
+        wrap(ModifyGuildMember(guild.id, member.userId, modificationTargetData))
       }
 
       memberCollectionActions = for {
         member <- guild.members.values.toList if targetUserIds.contains(member.userId)
-      } yield wrap(moveMember(member))
+      } yield moveMember(member)
 
       _ <- catsStdInstancesForList
         .sequence(memberCollectionActions)
