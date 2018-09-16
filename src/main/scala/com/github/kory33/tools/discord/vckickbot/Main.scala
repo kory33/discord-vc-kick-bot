@@ -2,18 +2,20 @@ package com.github.kory33.tools.discord.vckickbot
 
 import cats.Monad
 import com.github.kory33.tools.discord.util.RichFuture._
-import net.katsstuff.ackcord.commands.{CmdCategory, CmdDescription, CmdFilter, ParsedCmd}
-import net.katsstuff.ackcord.util.Streamable
 import net.katsstuff.ackcord._
+import net.katsstuff.ackcord.commands.{CmdCategory, CmdDescription, CmdFilter, ParsedCmd}
 import net.katsstuff.ackcord.data.ChannelType
 import net.katsstuff.ackcord.http.rest._
+import net.katsstuff.ackcord.util.Streamable
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
-class VCKickUsersHandler[F[_]: Monad: Streamable] extends (ParsedCmd[F, List[String]] => Unit) {
+class VCKickUsersHandler[F[_]: Monad] extends (ParsedCmd[F, List[String]] => Unit) {
+  private object Constants {
+    val intermediaryVCData = CreateGuildChannelData("vckickbot-intermediary", RestSome(ChannelType.GuildVoice))
+  }
 
   override def apply(command: ParsedCmd[F, List[String]]): Unit = {
-    import RequestDSL._
     implicit val cache: CacheSnapshot[F] = command.cache
 
     val message = command.msg
@@ -21,21 +23,25 @@ class VCKickUsersHandler[F[_]: Monad: Streamable] extends (ParsedCmd[F, List[Str
     // bot itself might be included, but does not matter since the bot does not join vc
     val targetUserIds = message.mentions.toSet
 
+    import RequestDSL._
+    import cats.instances.list._
+
     for {
-      guildChannel <- message.tGuildChannel
+      guildChannel <- message.tGuildChannel[F]
       guild <- guildChannel.guild
+    } yield for {
+      intermediaryVC <- CreateGuildChannel(guild.id, Constants.intermediaryVCData)
 
-      intermediaryVCData = CreateGuildChannelData("vckickbot-intermediary", RestSome(ChannelType.GuildVoice))
-      intermediaryVC <- CreateGuildChannel(guild.id, intermediaryVCData)
-      modifyTargetData = ModifyGuildMemberData(channelId = RestSome(intermediaryVC.id))
+      memberCollectionActions = for {
+        member <- guild.members.values.toList if targetUserIds.contains(member.userId)
+      } yield {
+        val modificationTargetData = ModifyGuildMemberData(channelId = RestSome(intermediaryVC.id))
+        val request = ModifyGuildMember(guild.id, member.userId, modificationTargetData)
+        wrap(request)
+      }
 
-      memberCollectionResult <- for {
-        member <- guild.members.values if targetUserIds.contains(member.userId)
-      } yield for {
-        result <- ModifyGuildMember(guild.id, member.userId, modifyTargetData)
-      } yield result
-
-      _ <- memberCollectionResult.flatMap(_ => DeleteCloseChannel(intermediaryVC.id))
+      _ <- catsStdInstancesForList.sequence(memberCollectionActions)
+      _ <- DeleteCloseChannel(intermediaryVC.id)
     } yield ()
   }
 
