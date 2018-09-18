@@ -11,14 +11,13 @@ import net.katsstuff.ackcord.util.Streamable
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
-class VCKickUsersHandler[F[_]: Monad] extends (ParsedCmd[F, List[String]] => Unit) {
+class VCKickUsersHandler[F[_]: Monad: Streamable] extends (ParsedCmd[F, List[String]] => Unit) {
   private object Constants {
     val intermediaryVCData = CreateGuildChannelData("vckickbot-intermediary", RestSome(ChannelType.GuildVoice))
   }
 
   override def apply(command: ParsedCmd[F, List[String]]): Unit = {
     implicit val cache: CacheSnapshot[F] = command.cache
-
     val message = command.msg
 
     // bot itself might be included, but does not matter since the bot does not join vc
@@ -28,9 +27,8 @@ class VCKickUsersHandler[F[_]: Monad] extends (ParsedCmd[F, List[String]] => Uni
     import cats.instances.list._
 
     for {
-      guildChannel <- message.tGuildChannel[F]
-      guild <- guildChannel.guild
-    } yield for {
+      guildChannel <- liftOptionT(message.tGuildChannel[F])
+      guild <- liftOptionT(guildChannel.guild)
       intermediaryVC <- CreateGuildChannel(guild.id, Constants.intermediaryVCData)
 
       moveMember = { member: GuildMember =>
